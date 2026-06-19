@@ -8,11 +8,11 @@ Please feel free to contribute through feedback, input, recommendations, develop
 
 [Download Adventurer's Log for Android](https://github.com/DeerwolfStudios/AdventurersLog/releases/download/v1.0.0/Adventurers.Log.-.Release.Build.1.0.0.apk)
 
-Thank you for your support.
+**Thank you for your support!**
 
 iOS binaries will be included with the next release.
 
-Much love,
+Much love,<br>
 Oh, Hey Dan.
 
 **YouTube:** [Oh, Hey Dan.](https://youtube.com/@OhHeyyDan)
