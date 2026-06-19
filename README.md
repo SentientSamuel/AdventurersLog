@@ -16,5 +16,3 @@ Much love,
 Oh, Hey Dan.
 
 **YouTube:** [Oh, Hey Dan.](https://youtube.com/@OhHeyyDan)
-
-Adventurers.Log.-.Release.Build.1.0.0.apk
