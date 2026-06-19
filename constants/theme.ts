@@ -1,0 +1,26 @@
+export const theme = {
+  colors: {
+    background: '#0d0900',
+    backgroundMid: '#1a1005',
+    panel: '#1e1408',
+    panelLight: '#2a1e0f',
+    border: '#6b4f1a',
+    borderGold: '#c8a030',
+    borderLight: '#e8c84a',
+    gold: '#c8a030',
+    goldLight: '#f0d060',
+    goldDim: '#8a6b1a',
+    parchment: '#f0dea8',
+    parchmentDim: '#c8b47a',
+    parchmentDark: '#8a7048',
+    red: '#8b1a1a',
+    redLight: '#cc2222',
+    green: '#2a5a18',
+    greenLight: '#3a8a24',
+    white: '#ffffff',
+    textMuted: '#9a8060',
+  },
+  fonts: {
+    display: 'IMFellEnglish_400Regular',
+  },
+};

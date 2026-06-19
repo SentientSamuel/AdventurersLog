@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Adventurers Log",
+    "slug": "adventurerslog",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icons/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/icons/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d0900"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.DeerwolfStudios.AdventurersLog",
+      "icon": "./assets/icons/icon.png"
+    },
+    "android": {
+      "package": "com.DeerwolfStudios.AdventurersLog",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icons/icon.png",
+        "backgroundColor": "#0d0900"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-asset"
+    ],
+    "scheme": "adventurerslog",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d9505c02-5f72-4bec-af9d-77181199cf08"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/d9505c02-5f72-4bec-af9d-77181199cf08"
+    }
+  }
+}
