@@ -49,22 +49,7 @@ export type WikiSyncSyncResult = {
 };
 
 /** WikiSync quest names that differ from Adventurer's Log quest list. */
-export const WIKISYNC_QUEST_ALIASES: Record<string, string> = {
-  'Fairytale I - Growing Pains': 'Fairy Tale I',
-  'Fairytale II - Cure a Queen': 'Fairy Tale II',
-  'Fairytale III - Battle at Orks Rift': 'Fairy Tale III',
-  'Desert Treasure II - The Fallen Empire': 'Desert Treasure II',
-  'Recipe for Disaster - Another Cook\'s Quest': 'Recipe for Disaster',
-  'Recipe for Disaster - Culinaromancer': 'Recipe for Disaster',
-  'Recipe for Disaster - Evil Dave': 'Recipe for Disaster',
-  'Recipe for Disaster - King Awowogei': 'Recipe for Disaster',
-  'Recipe for Disaster - Lumbridge Guide': 'Recipe for Disaster',
-  'Recipe for Disaster - Mountain Dwarf': 'Recipe for Disaster',
-  'Recipe for Disaster - Pirate Pete': 'Recipe for Disaster',
-  'Recipe for Disaster - Sir Amik Varze': 'Recipe for Disaster',
-  'Recipe for Disaster - Skrach Uglogwee': 'Recipe for Disaster',
-  'Recipe for Disaster - Wartface & Bentnoze': 'Recipe for Disaster',
-};
+export const WIKISYNC_QUEST_ALIASES: Record<string, string> = {};
 
 /** Maps WikiSync diary region keys to Adventurer's Log diary names. */
 export const WIKISYNC_DIARY_REGION_MAP: Record<string, string> = {
@@ -225,6 +210,7 @@ export const WIKISYNC_STORAGE_KEYS = {
   quests: 'quests_completed',
   diaries: 'achievement_diaries_completed',
   meta: 'wikisync_last_sync',
+  selectedUsername: 'wikisync_selected_username',
 } as const;
 
 export type WikiSyncAutoSyncResult = {
@@ -234,71 +220,48 @@ export type WikiSyncAutoSyncResult = {
 };
 
 /**
- * Silently sync WikiSync progress for every saved Adventurer's Log character.
- * Merges quest and diary completion into local storage.
+ * Silently sync WikiSync progress for the active Adventurer's Log character.
+ * Replaces that character's quest/diary data (does not merge across accounts).
  */
 export async function autoSyncWikiSyncForSavedCharacters(
   questNames: string[],
 ): Promise<WikiSyncAutoSyncResult> {
-  const { migrateStoredQuestCompletions, migrateQuestCompletionSet } =
-    await import('./quest-migrations');
-  const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+  const {
+    migrateToPerCharacterProgress,
+    getActiveProgressKey,
+    getActiveCharacterUsername,
+    loadSavedCharacters,
+    setActiveProgressKey,
+    replaceProgressFromWikiSync,
+  } = await import('./character-progress');
 
-  await migrateStoredQuestCompletions();
+  await migrateToPerCharacterProgress();
 
-  const charsRaw = await AsyncStorage.getItem(WIKISYNC_STORAGE_KEYS.characters);
-  if (!charsRaw) return { characters: 0, synced: 0, failed: 0 };
+  const characters = await loadSavedCharacters();
+  if (characters.length === 0) return { characters: 0, synced: 0, failed: 0 };
 
-  let characters: { username: string }[] = [];
-  try {
-    characters = JSON.parse(charsRaw);
-  } catch {
-    return { characters: 0, synced: 0, failed: 0 };
+  let progressKey = await getActiveProgressKey();
+  let username = progressKey ? await getActiveCharacterUsername() : null;
+
+  if (!progressKey || !username) {
+    const first = characters[0];
+    progressKey = first.id;
+    username = first.username;
+    await setActiveProgressKey(progressKey);
   }
 
-  const usernames = [...new Set(
-    characters.map((c) => c.username?.trim()).filter((u): u is string => Boolean(u)),
-  )];
-  if (usernames.length === 0) return { characters: 0, synced: 0, failed: 0 };
-
-  let questSet = new Set<string>();
-  const questsRaw = await AsyncStorage.getItem(WIKISYNC_STORAGE_KEYS.quests);
-  if (questsRaw) {
-    try {
-      questSet = migrateQuestCompletionSet(JSON.parse(questsRaw) as string[]);
-    } catch { /* ignore */ }
+  const result = await fetchWikiSyncProfile(username);
+  if (!result.ok) {
+    return { characters: characters.length, synced: 0, failed: 1 };
   }
 
-  let diarySet = new Set<string>();
-  const diariesRaw = await AsyncStorage.getItem(WIKISYNC_STORAGE_KEYS.diaries);
-  if (diariesRaw) {
-    try {
-      diarySet = new Set(JSON.parse(diariesRaw) as string[]);
-    } catch { /* ignore */ }
-  }
+  await replaceProgressFromWikiSync(
+    progressKey,
+    username,
+    result.data,
+    questNames,
+    ['quests', 'diaries'],
+  );
 
-  let synced = 0;
-  let failed = 0;
-  let latestMeta: { username: string; at: string } | null = null;
-
-  for (const username of usernames) {
-    const result = await fetchWikiSyncProfile(username);
-    if (!result.ok) {
-      failed++;
-      continue;
-    }
-    mergeWikiSyncProgress(questSet, diarySet, result.data, questNames);
-    synced++;
-    if (!latestMeta || result.data.timestamp > latestMeta.at) {
-      latestMeta = { username, at: result.data.timestamp };
-    }
-  }
-
-  await AsyncStorage.setItem(WIKISYNC_STORAGE_KEYS.quests, JSON.stringify([...questSet]));
-  await AsyncStorage.setItem(WIKISYNC_STORAGE_KEYS.diaries, JSON.stringify([...diarySet]));
-  if (latestMeta) {
-    await AsyncStorage.setItem(WIKISYNC_STORAGE_KEYS.meta, JSON.stringify(latestMeta));
-  }
-
-  return { characters: usernames.length, synced, failed };
+  return { characters: characters.length, synced: 1, failed: 0 };
 }

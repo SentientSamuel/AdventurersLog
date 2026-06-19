@@ -1,1 +1,1 @@
-export { QUEST_NAME_LIST } from '../app/quests';
+export { QUEST_NAME_LIST } from './quest-data';

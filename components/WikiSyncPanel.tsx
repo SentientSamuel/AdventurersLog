@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,18 +13,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '../constants/theme';
 import {
   fetchWikiSyncProfile,
-  mergeWikiSyncProgress,
+  extractCompletedQuests,
   formatWikiSyncTimestamp,
   WIKISYNC_SETUP_STEPS,
   WIKISYNC_STORAGE_KEYS,
   type WikiSyncSyncResult,
 } from '../constants/wikisync-api';
-import { migrateQuestCompletionSet, migrateStoredQuestCompletions } from '../constants/quest-migrations';
+import {
+  loadSavedCharacters,
+  loadSyncMeta,
+  migrateToPerCharacterProgress,
+  replaceProgressFromWikiSync,
+  resolveProgressKey,
+  setActiveCharacterByUsername,
+  getActiveProgressKey,
+} from '../constants/character-progress';
+import { countsTowardQuestCape, QUESTS } from '../constants/quest-data';
 
 const CHARACTERS_KEY = WIKISYNC_STORAGE_KEYS.characters;
-const QUESTS_KEY = WIKISYNC_STORAGE_KEYS.quests;
-const DIARIES_KEY = WIKISYNC_STORAGE_KEYS.diaries;
-const WIKISYNC_META_KEY = WIKISYNC_STORAGE_KEYS.meta;
+const SELECTED_USERNAME_KEY = WIKISYNC_STORAGE_KEYS.selectedUsername;
 
 type SavedCharacter = { id: string; username: string };
 
@@ -39,7 +46,22 @@ export type WikiSyncPanelProps = {
   hideUsernameInput?: boolean;
   compact?: boolean;
   onSynced?: (result: WikiSyncSyncResult & { username: string }) => void;
+  /** Called when the active character selection changes (before or without sync). */
+  onCharacterChange?: (username: string) => void;
 };
+
+function pickDefaultUsername(
+  characters: SavedCharacter[],
+  savedSelection: string | null,
+  lastSyncUsername: string | null,
+): string {
+  const saved = new Set(characters.map((c) => c.username));
+
+  if (savedSelection && saved.has(savedSelection)) return savedSelection;
+  if (lastSyncUsername && saved.has(lastSyncUsername)) return lastSyncUsername;
+  if (characters.length === 1) return characters[0].username;
+  return '';
+}
 
 export function WikiSyncPanel({
   questNames,
@@ -48,6 +70,7 @@ export function WikiSyncPanel({
   hideUsernameInput = false,
   compact = false,
   onSynced,
+  onCharacterChange,
 }: WikiSyncPanelProps) {
   const [expanded, setExpanded] = useState(!compact);
   const [showSetup, setShowSetup] = useState(false);
@@ -55,37 +78,117 @@ export function WikiSyncPanel({
   const [characters, setCharacters] = useState<SavedCharacter[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<{ username: string; at: string } | null>(null);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     if (fixedUsername) setUsername(fixedUsername);
   }, [fixedUsername]);
 
+  const loadPanelState = useCallback(async () => {
+    await migrateToPerCharacterProgress();
+
+    const [charsRaw, selectedRaw, activeKey] = await Promise.all([
+      AsyncStorage.getItem(CHARACTERS_KEY),
+      AsyncStorage.getItem(SELECTED_USERNAME_KEY),
+      getActiveProgressKey(),
+    ]);
+
+    let parsed: SavedCharacter[] = [];
+    if (charsRaw) {
+      try { parsed = JSON.parse(charsRaw) as SavedCharacter[]; } catch { /* ignore */ }
+    }
+    setCharacters(parsed);
+
+    if (activeKey) {
+      const meta = await loadSyncMeta(activeKey);
+      if (meta) setLastSync(meta);
+    }
+
+    if (fixedUsername) {
+      setUsername(fixedUsername);
+      initializedRef.current = true;
+      return;
+    }
+
+    if (!initializedRef.current) {
+      const activeChar = activeKey
+        ? parsed.find((c) => c.id === activeKey)
+        : undefined;
+      const selectedChar = selectedRaw
+        ? parsed.find((c) => c.username === selectedRaw)
+        : undefined;
+
+      const initial = activeChar?.username
+        ?? selectedChar?.username
+        ?? pickDefaultUsername(parsed, selectedRaw, null);
+
+      setUsername(initial);
+      initializedRef.current = true;
+    }
+  }, [fixedUsername]);
+
   useEffect(() => {
-    AsyncStorage.getItem(CHARACTERS_KEY).then((raw) => {
-      if (!raw) return;
-      try {
-        const parsed = JSON.parse(raw) as SavedCharacter[];
-        setCharacters(parsed);
-        if (!fixedUsername && !username && parsed.length === 1) {
-          setUsername(parsed[0].username);
-        }
-      } catch { /* ignore */ }
-    });
-    AsyncStorage.getItem(WIKISYNC_META_KEY).then((raw) => {
-      if (!raw) return;
-      try { setLastSync(JSON.parse(raw)); } catch { /* ignore */ }
-    });
-  }, [fixedUsername, username]);
+    loadPanelState();
+  }, [loadPanelState]);
+
+  useEffect(() => {
+    if (compact && expanded) loadPanelState();
+  }, [compact, expanded, loadPanelState]);
+
+  const persistSelection = useCallback(async (name: string) => {
+    const trimmed = name.trim();
+    if (trimmed) {
+      await AsyncStorage.setItem(SELECTED_USERNAME_KEY, trimmed);
+    } else {
+      await AsyncStorage.removeItem(SELECTED_USERNAME_KEY);
+    }
+  }, []);
+
+  const activateCharacter = useCallback(async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setUsername(trimmed);
+    await persistSelection(trimmed);
+    await setActiveCharacterByUsername(trimmed);
+    const chars = characters.length > 0 ? characters : await loadSavedCharacters();
+    const key = resolveProgressKey(trimmed, chars);
+    const meta = await loadSyncMeta(key);
+    setLastSync(meta);
+    onCharacterChange?.(trimmed);
+  }, [characters, persistSelection, onCharacterChange]);
+
+  const selectCharacter = useCallback((name: string) => {
+    activateCharacter(name);
+  }, [activateCharacter]);
+
+  const handleUsernameChange = useCallback((text: string) => {
+    setUsername(text);
+    persistSelection(text);
+  }, [persistSelection]);
+
+  const handleCharacterChipPress = useCallback((charUsername: string) => {
+    if (username === charUsername) {
+      setUsername('');
+      persistSelection('');
+      return;
+    }
+    selectCharacter(charUsername);
+  }, [username, selectCharacter, persistSelection]);
 
   const handleSync = useCallback(async () => {
     const targetUser = (fixedUsername ?? username).trim();
     if (!targetUser) {
-      Alert.alert('Username required', 'Enter your OSRS username or add a character in Adventurer\'s Log.');
+      Alert.alert(
+        'Select a character',
+        characters.length > 0
+          ? 'Pick one of your saved characters above, or enter an OSRS username manually.'
+          : 'Enter your OSRS username or add a character in Adventurer\'s Log.',
+      );
       return;
     }
 
     setSyncing(true);
-    await migrateStoredQuestCompletions();
+    await migrateToPerCharacterProgress();
 
     const result = await fetchWikiSyncProfile(targetUser);
     setSyncing(false);
@@ -95,59 +198,43 @@ export function WikiSyncPanel({
       return;
     }
 
-    const syncQuests = syncTargets.includes('quests');
-    const syncDiaries = syncTargets.includes('diaries');
+    const chars = characters.length > 0 ? characters : await loadSavedCharacters();
+    const progressKey = resolveProgressKey(targetUser, chars);
 
-    let questSet = new Set<string>();
-    let diarySet = new Set<string>();
-
-    if (syncQuests) {
-      const raw = await AsyncStorage.getItem(QUESTS_KEY);
-      if (raw) {
-        try { questSet = migrateQuestCompletionSet(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    }
-
-    if (syncDiaries) {
-      const raw = await AsyncStorage.getItem(DIARIES_KEY);
-      if (raw) {
-        try { diarySet = new Set(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    }
-
-    const mergeResult = mergeWikiSyncProgress(
-      questSet,
-      diarySet,
+    const mergeResult = await replaceProgressFromWikiSync(
+      progressKey,
+      targetUser,
       result.data,
       questNames,
+      syncTargets,
     );
 
-    if (syncQuests) {
-      await AsyncStorage.setItem(QUESTS_KEY, JSON.stringify([...questSet]));
-    }
-    if (syncDiaries) {
-      await AsyncStorage.setItem(DIARIES_KEY, JSON.stringify([...diarySet]));
-    }
-
+    await persistSelection(targetUser);
     const meta = { username: targetUser, at: result.data.timestamp };
-    await AsyncStorage.setItem(WIKISYNC_META_KEY, JSON.stringify(meta));
     setLastSync(meta);
+    onCharacterChange?.(targetUser);
+
+    const wikiQuests = extractCompletedQuests(result.data, questNames);
+    const capeCompleted = [...wikiQuests].filter((name) => {
+      const q = QUESTS.find((entry) => entry.name === name);
+      return q && countsTowardQuestCape(q);
+    }).length;
 
     const parts: string[] = [];
-    if (syncQuests) {
-      parts.push(`${mergeResult.questTotal} quests (${mergeResult.questsAdded} newly marked)`);
+    if (syncTargets.includes('quests')) {
+      parts.push(`${capeCompleted}/180 quests (${mergeResult.questsAdded} changed)`);
     }
-    if (syncDiaries) {
-      parts.push(`${mergeResult.diaryTierTotal} diary tiers (${mergeResult.diaryTiersAdded} newly marked)`);
+    if (syncTargets.includes('diaries')) {
+      parts.push(`${mergeResult.diaryTierTotal} diary tiers (${mergeResult.diaryTiersAdded} changed)`);
     }
 
     Alert.alert(
       'WikiSync complete',
-      `Synced ${targetUser}:\n${parts.join('\n')}\n\nData from ${formatWikiSyncTimestamp(result.data.timestamp)}.`,
+      `Synced ${targetUser}:\n${parts.join('\n')}\n\nData from ${formatWikiSyncTimestamp(result.data.timestamp)}.\n\nProgress is saved per character — other accounts are unaffected.`,
     );
 
     onSynced?.({ ...mergeResult, username: targetUser });
-  }, [fixedUsername, username, syncTargets, questNames, onSynced]);
+  }, [fixedUsername, username, characters, syncTargets, questNames, onSynced, onCharacterChange, persistSelection]);
 
   const panelBody = (
     <View style={styles.body}>
@@ -173,24 +260,34 @@ export function WikiSyncPanel({
       {!hideUsernameInput && (
         <>
           {characters.length > 0 && (
-            <View style={styles.chipRow}>
-              {characters.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[styles.chip, username === c.username && styles.chipActive]}
-                  onPress={() => setUsername(c.username)}
-                >
-                  <Text style={[styles.chipText, username === c.username && styles.chipTextActive]}>{c.username}</Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.characterSection}>
+              <Text style={styles.characterLabel}>
+                {characters.length === 1 ? 'Saved character' : 'Select character'}
+              </Text>
+              <View style={styles.chipRow}>
+                {characters.map((c) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.chip, username === c.username && styles.chipActive]}
+                    onPress={() => handleCharacterChipPress(c.username)}
+                  >
+                    <Text style={[styles.chipText, username === c.username && styles.chipTextActive]}>
+                      {c.username}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {characters.length > 1 && (
+                <Text style={styles.characterHint}>Tap a character to sync. Tap again to deselect.</Text>
+              )}
             </View>
           )}
           <TextInput
             style={styles.input}
-            placeholder="OSRS username"
+            placeholder={characters.length > 0 ? 'Or enter another OSRS username' : 'OSRS username'}
             placeholderTextColor={theme.colors.textMuted}
             value={username}
-            onChangeText={setUsername}
+            onChangeText={handleUsernameChange}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -312,6 +409,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gold,
     marginTop: 4,
+  },
+  characterSection: {
+    gap: 6,
+  },
+  characterLabel: {
+    fontFamily: theme.fonts.display,
+    fontSize: 14,
+    color: theme.colors.gold,
+    letterSpacing: 0.5,
+  },
+  characterHint: {
+    fontFamily: theme.fonts.display,
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    fontStyle: 'italic',
   },
   chipRow: {
     flexDirection: 'row',

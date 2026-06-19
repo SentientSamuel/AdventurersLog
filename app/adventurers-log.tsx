@@ -24,6 +24,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '../constants/theme';
 import { WikiSyncPanel } from '../components/WikiSyncPanel';
 import { QUEST_NAME_LIST } from '../constants/quest-names';
+import {
+  deleteCharacterProgress,
+  migrateToPerCharacterProgress,
+  setActiveProgressKey,
+} from '../constants/character-progress';
 
 type SkillName =
   | 'Attack' | 'Defence' | 'Strength' | 'Hitpoints' | 'Ranged'
@@ -303,10 +308,17 @@ export default function AdventurersLogScreen() {
 
   useEffect(() => {
     const init = async () => {
+      await migrateToPerCharacterProgress();
       const chars = await loadCharacters();
       setCharacters(chars);
       if (chars.length > 0) {
-        setActiveCharId(chars[0].id);
+        const { getActiveProgressKey } = await import('../constants/character-progress');
+        const savedActiveId = await getActiveProgressKey();
+        const initialId = savedActiveId && chars.some((c) => c.id === savedActiveId)
+          ? savedActiveId
+          : chars[0].id;
+        setActiveCharId(initialId);
+        await setActiveProgressKey(initialId);
         setAutoChecking(true);
         const updated = await Promise.all(
           chars.map(async (char) => {
@@ -379,6 +391,7 @@ export default function AdventurersLogScreen() {
     const updated = [...characters, newChar];
     await persist(updated);
     setActiveCharId(newChar.id);
+    await setActiveProgressKey(newChar.id);
     setNewUsername('');
     setShowAddChar(false);
     setChecking(false);
@@ -402,9 +415,12 @@ export default function AdventurersLogScreen() {
     Alert.alert('Remove Character', `Remove ${activeChar.username} from your log? This cannot be undone.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: async () => {
+        await deleteCharacterProgress(activeChar.id);
         const updated = characters.filter((c) => c.id !== activeChar.id);
         await persist(updated);
-        setActiveCharId(updated.length > 0 ? updated[0].id : null);
+        const nextId = updated.length > 0 ? updated[0].id : null;
+        setActiveCharId(nextId);
+        if (nextId) await setActiveProgressKey(nextId);
       }},
     ]);
   };
@@ -494,7 +510,10 @@ export default function AdventurersLogScreen() {
                     <TouchableOpacity
                       key={char.id}
                       style={[styles.charChip, char.id === activeCharId && styles.charChipActive]}
-                      onPress={() => setActiveCharId(char.id)}
+                      onPress={async () => {
+                        setActiveCharId(char.id);
+                        await setActiveProgressKey(char.id);
+                      }}
                     >
                       <Text style={[styles.charChipText, char.id === activeCharId && styles.charChipTextActive]}>
                         {char.username}

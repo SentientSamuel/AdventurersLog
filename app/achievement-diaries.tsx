@@ -2,18 +2,24 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
   Image, ActivityIndicator, useWindowDimensions, Keyboard,
-  KeyboardAvoidingView, Platform, Pressable,
+  KeyboardAvoidingView, Platform, Pressable, Alert,
 } from 'react-native';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { theme } from '../constants/theme';
 import { WikiSyncPanel } from '../components/WikiSyncPanel';
+import {
+  getActiveProgressKey,
+  getActiveCharacterUsername,
+  loadDiaryCompletions,
+  saveDiaryCompletions,
+  migrateToPerCharacterProgress,
+  setActiveCharacterByUsername,
+} from '../constants/character-progress';
 
 const WIKI_API    = 'https://oldschool.runescape.wiki/api.php';
 const UA          = 'AdventurersLog-App/1.0';
-const STORAGE_KEY = 'achievement_diaries_completed';
 
 // Diary data
 
@@ -648,32 +654,48 @@ const fbStyles = StyleSheet.create({
 export default function AchievementDiariesScreen() {
   const router = useRouter();
   const [completedTiers, setCompletedTiers] = useState<Set<string>>(new Set());
+  const [activeUsername, setActiveUsername] = useState<string | null>(null);
+  const [progressKey, setProgressKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<DiaryFilter>('All');
   const [selectedDiary, setSelectedDiary] = useState<Diary | null>(null);
 
-  const reloadCompleted = useCallback(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then(raw => {
-      if (raw) {
-        try { setCompletedTiers(new Set(JSON.parse(raw))); } catch {}
-      }
-    });
+  const reloadCompleted = useCallback(async () => {
+    await migrateToPerCharacterProgress();
+    const key = await getActiveProgressKey();
+    const username = await getActiveCharacterUsername();
+    setProgressKey(key);
+    setActiveUsername(username);
+    if (!key) {
+      setCompletedTiers(new Set());
+      return;
+    }
+    setCompletedTiers(await loadDiaryCompletions(key));
   }, []);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     reloadCompleted();
+  }, [reloadCompleted]));
+
+  const handleCharacterChange = useCallback(async (username: string) => {
+    await setActiveCharacterByUsername(username);
+    await reloadCompleted();
   }, [reloadCompleted]);
 
   const toggleTier = useCallback(async (diary: Diary, tier: Tier) => {
+    if (!progressKey) {
+      Alert.alert('Select a character', 'Choose a saved character in WikiSync below before marking diaries.');
+      return;
+    }
     const key = tierKey(diary, tier);
     setCompletedTiers(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
+      saveDiaryCompletions(progressKey, next);
       return next;
     });
-  }, []);
+  }, [progressKey]);
 
   const filteredDiaries = DIARIES.filter(d => {
     if (searchQuery && !d.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -725,6 +747,11 @@ export default function AchievementDiariesScreen() {
 
             {/* Progress */}
             <View style={styles.section}>
+              {activeUsername ? (
+                <Text style={styles.activeCharacter}>Tracking: {activeUsername}</Text>
+              ) : (
+                <Text style={styles.activeCharacterMuted}>Select a character in WikiSync to track progress</Text>
+              )}
               <ProgressPanel completedCount={completedCount} totalTiers={TOTAL_TIERS} />
             </View>
 
@@ -734,6 +761,7 @@ export default function AchievementDiariesScreen() {
                 questNames={[]}
                 syncTargets={['diaries']}
                 onSynced={reloadCompleted}
+                onCharacterChange={handleCharacterChange}
               />
             </View>
 
@@ -818,6 +846,20 @@ const styles = StyleSheet.create({
   ornamentLabel: { fontFamily: theme.fonts.display, fontSize: 11, color: theme.colors.goldDim, letterSpacing: 3, textTransform: 'uppercase', includeFontPadding: false },
 
   section: { marginBottom: 20 },
+  activeCharacter: {
+    fontFamily: theme.fonts.display,
+    fontSize: 15,
+    color: theme.colors.goldLight,
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  activeCharacterMuted: {
+    fontFamily: theme.fonts.display,
+    fontSize: 14,
+    color: theme.colors.textMuted,
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   diamond: { width: 6, height: 6, backgroundColor: theme.colors.gold, transform: [{ rotate: '45deg' }], flexShrink: 0 },
   sectionTitle: { fontFamily: theme.fonts.display, fontSize: 20, color: theme.colors.goldLight, letterSpacing: 2, textTransform: 'uppercase', includeFontPadding: false },
