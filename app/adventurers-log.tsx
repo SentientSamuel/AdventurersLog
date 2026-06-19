@@ -21,7 +21,11 @@ import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { theme } from '../constants/theme';type SkillName =
+import { theme } from '../constants/theme';
+import { WikiSyncPanel } from '../components/WikiSyncPanel';
+import { QUEST_NAME_LIST } from '../constants/quest-names';
+
+type SkillName =
   | 'Attack' | 'Defence' | 'Strength' | 'Hitpoints' | 'Ranged'
   | 'Prayer' | 'Magic' | 'Cooking' | 'Woodcutting' | 'Fletching'
   | 'Fishing' | 'Firemaking' | 'Crafting' | 'Smithing' | 'Mining'
@@ -538,6 +542,15 @@ export default function AdventurersLogScreen() {
                         </View>
                     }
                   </TouchableOpacity>
+                </View>
+
+                <View style={styles.section}>
+                  <WikiSyncPanel
+                    fixedUsername={activeChar.username}
+                    hideUsernameInput
+                    questNames={QUEST_NAME_LIST}
+                    syncTargets={['quests', 'diaries']}
+                  />
                 </View>
 
                 {activeChar.lastSnapshot ? (

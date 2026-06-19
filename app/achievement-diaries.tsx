@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '../constants/theme';
+import { WikiSyncPanel } from '../components/WikiSyncPanel';
 
 const WIKI_API    = 'https://oldschool.runescape.wiki/api.php';
 const UA          = 'AdventurersLog-App/1.0';
@@ -651,13 +652,17 @@ export default function AchievementDiariesScreen() {
   const [filter, setFilter] = useState<DiaryFilter>('All');
   const [selectedDiary, setSelectedDiary] = useState<Diary | null>(null);
 
-  useEffect(() => {
+  const reloadCompleted = useCallback(() => {
     AsyncStorage.getItem(STORAGE_KEY).then(raw => {
       if (raw) {
         try { setCompletedTiers(new Set(JSON.parse(raw))); } catch {}
       }
     });
   }, []);
+
+  useEffect(() => {
+    reloadCompleted();
+  }, [reloadCompleted]);
 
   const toggleTier = useCallback(async (diary: Diary, tier: Tier) => {
     const key = tierKey(diary, tier);
@@ -721,6 +726,15 @@ export default function AchievementDiariesScreen() {
             {/* Progress */}
             <View style={styles.section}>
               <ProgressPanel completedCount={completedCount} totalTiers={TOTAL_TIERS} />
+            </View>
+
+            <View style={styles.section}>
+              <WikiSyncPanel
+                compact
+                questNames={[]}
+                syncTargets={['diaries']}
+                onSynced={reloadCompleted}
+              />
             </View>
 
             {/* Diary detail */}

@@ -23,6 +23,7 @@
     "expo-updates": "~29.0.17",
     "glob": "^13.0.6",
     "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
@@ -35,7 +36,7 @@
     "typescript": "~5.9.2"
   },
   "overrides": {
-    "react-dom": "^19.0.0"
+    "react-dom": "19.1.0"
   },
   "private": true
 }

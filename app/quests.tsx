@@ -9,6 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '../constants/theme';
+import { WikiSyncPanel } from '../components/WikiSyncPanel';
+import { migrateStoredQuestCompletions } from '../constants/quest-migrations';
 
 const WIKI_API    = 'https://oldschool.runescape.wiki/api.php';
 const UA          = 'AdventurersLog-App/1.0';
@@ -48,7 +50,6 @@ const QUESTS: Quest[] = [
   { name: 'Druidic Ritual',            qp: 4,  members: false, difficulty: 'Novice' },
   { name: 'Lost City',                 qp: 3,  members: false, difficulty: 'Experienced' },
   { name: 'Witch\'s House',            qp: 4,  members: false, difficulty: 'Intermediate' },
-  { name: 'Merlins\'s Crystal',        qp: 6,  members: false, difficulty: 'Intermediate' },
   { name: 'Heroes\' Quest',            qp: 1,  members: false, difficulty: 'Experienced', series: 'Heroes\' Quest' },
   { name: 'Scorpion Catcher',          qp: 1,  members: false, difficulty: 'Intermediate' },
   { name: 'Family Crest',              qp: 1,  members: false, difficulty: 'Experienced' },
@@ -114,11 +115,11 @@ const QUESTS: Quest[] = [
   { name: 'Garden of Tranquillity',    qp: 2,  members: true,  difficulty: 'Intermediate' },
   { name: 'Grim Tales',                qp: 1,  members: true,  difficulty: 'Master' },
   { name: 'Gnome Restaurant',          qp: 0,  members: true,  difficulty: 'Novice' },
-  { name: 'Hand in the Sand',          qp: 1,  members: true,  difficulty: 'Intermediate' },
+  { name: 'The Hand in the Sand',      qp: 1,  members: true,  difficulty: 'Intermediate' },
   { name: 'Haunted Mine',              qp: 2,  members: true,  difficulty: 'Experienced', series: 'Myreque' },
   { name: 'Horror from the Deep',      qp: 2,  members: true,  difficulty: 'Intermediate' },
-  { name: 'How to Get Ahead',          qp: 1,  members: true,  difficulty: 'Intermediate' },
-  { name: 'Icthlarins\' Little Helper', qp: 2, members: true,  difficulty: 'Intermediate', series: 'Desert' },
+  { name: 'Getting Ahead',             qp: 1,  members: true,  difficulty: 'Intermediate' },
+  { name: 'Icthlarin\'s Little Helper', qp: 2, members: true,  difficulty: 'Intermediate', series: 'Desert' },
   { name: 'In Aid of the Myreque',     qp: 2,  members: true,  difficulty: 'Intermediate', series: 'Myreque' },
   { name: 'In Search of the Myreque',  qp: 2,  members: true,  difficulty: 'Intermediate', series: 'Myreque' },
   { name: 'King\'s Ransom',            qp: 1,  members: true,  difficulty: 'Master', series: 'Camelot' },
@@ -126,7 +127,8 @@ const QUESTS: Quest[] = [
   { name: 'Making Friends with My Arm', qp: 1, members: true,  difficulty: 'Master', series: 'Troll' },
   { name: 'Making History',            qp: 3,  members: true,  difficulty: 'Intermediate' },
   { name: 'Merlin\'s Crystal',         qp: 6,  members: true,  difficulty: 'Intermediate', series: 'Camelot' },
-  { name: 'Monk\'s Friend',            qp: 1,  members: true,  difficulty: 'Novice' },
+  { name: 'Monkey Madness I',          qp: 3,  members: true,  difficulty: 'Experienced', series: 'Gnome' },
+  { name: 'Monkey Madness II',         qp: 5,  members: true,  difficulty: 'Grandmaster', series: 'Gnome' },
   { name: 'Mountain Daughter',         qp: 2,  members: true,  difficulty: 'Intermediate', series: 'Fremennik' },
   { name: 'Mourning\'s End Part I',    qp: 2,  members: true,  difficulty: 'Master', series: 'Elf' },
   { name: 'Mourning\'s End Part II',   qp: 2,  members: true,  difficulty: 'Master', series: 'Elf' },
@@ -147,17 +149,13 @@ const QUESTS: Quest[] = [
   { name: 'Shades of Mort\'ton',       qp: 3,  members: true,  difficulty: 'Intermediate' },
   { name: 'Shadow of the Storm',       qp: 1,  members: true,  difficulty: 'Experienced' },
   { name: 'Skippy and the Mogres',     qp: 0,  members: true,  difficulty: 'Novice' },
-  { name: 'Slug Menace',               qp: 1,  members: true,  difficulty: 'Intermediate' },
   { name: 'Ratcatchers',               qp: 2,  members: true,  difficulty: 'Intermediate' },
   { name: 'Tears of Guthix',           qp: 1,  members: true,  difficulty: 'Intermediate' },
   { name: 'Throne of Miscellania',     qp: 1,  members: true,  difficulty: 'Intermediate', series: 'Fremennik' },
   { name: 'Troll Romance',             qp: 2,  members: true,  difficulty: 'Intermediate', series: 'Troll' },
   { name: 'Troll Stronghold',          qp: 1,  members: true,  difficulty: 'Experienced', series: 'Troll' },
   { name: 'Tower of Life',             qp: 2,  members: true,  difficulty: 'Novice' },
-  { name: 'Tribal Totem',              qp: 1,  members: true,  difficulty: 'Intermediate' },
-  { name: 'Vampyre Slayer',            qp: 3,  members: true,  difficulty: 'Intermediate' },
   { name: 'Wanted!',                   qp: 1,  members: true,  difficulty: 'Intermediate', series: 'Camelot' },
-  { name: 'Welfare Queen',             qp: 1,  members: true,  difficulty: 'Novice' },
   { name: 'What Lies Below',           qp: 1,  members: true,  difficulty: 'Intermediate' },
   { name: 'Zogre Flesh Eaters',        qp: 1,  members: true,  difficulty: 'Intermediate' },
   { name: 'A Soul\'s Bane',            qp: 1,  members: true,  difficulty: 'Intermediate' },
@@ -171,16 +169,12 @@ const QUESTS: Quest[] = [
   { name: 'The Giant Dwarf',           qp: 2,  members: true,  difficulty: 'Intermediate', series: 'Dwarven' },
   { name: 'The Golem',                 qp: 1,  members: true,  difficulty: 'Intermediate', series: 'Desert' },
   { name: 'The Great Brain Robbery',   qp: 2,  members: true,  difficulty: 'Master', series: 'Pirate' },
-  { name: 'The Hand in the Sand',      qp: 1,  members: true,  difficulty: 'Intermediate' },
   { name: 'The Lost Tribe',            qp: 1,  members: true,  difficulty: 'Intermediate', series: 'Dorgeshuun' },
-  { name: 'The Maiden of Sugadinti',   qp: 2,  members: true,  difficulty: 'Master', series: 'Myreque' },
   { name: 'The Slug Menace',           qp: 1,  members: true,  difficulty: 'Intermediate' },
-  { name: 'The Tale of the Righteous', qp: 1,  members: true,  difficulty: 'Novice', series: 'Kourend & Kebos' },
-  { name: 'Icthlarin\'s Little Helper', qp: 2, members: true,  difficulty: 'Intermediate', series: 'Desert' },
+  { name: 'Tale of the Righteous',     qp: 1,  members: true,  difficulty: 'Novice', series: 'Kourend & Kebos' },
   { name: 'Sins of the Father',        qp: 2,  members: true,  difficulty: 'Master', series: 'Myreque' },
   { name: 'A Kingdom Divided',         qp: 1,  members: true,  difficulty: 'Master', series: 'Kourend & Kebos' },
   { name: 'Below Ice Mountain',        qp: 1,  members: true,  difficulty: 'Novice' },
-  { name: 'Gunnarsgrunn',              qp: 5,  members: true,  difficulty: 'Novice' },
   { name: 'Land of the Goblins',       qp: 1,  members: true,  difficulty: 'Experienced', series: 'Dorgeshuun' },
   { name: 'Temple of the Eye',         qp: 1,  members: true,  difficulty: 'Novice' },
   { name: 'Into the Tombs',            qp: 1,  members: true,  difficulty: 'Intermediate' },
@@ -188,14 +182,10 @@ const QUESTS: Quest[] = [
   { name: 'Sleeping Giants',           qp: 1,  members: true,  difficulty: 'Intermediate' },
   { name: 'The Ribbiting Tale of a Lily Pad Labour Dispute', qp: 1, members: true, difficulty: 'Novice' },
   { name: 'Secrets of the North',      qp: 1,  members: true,  difficulty: 'Master', series: 'Desert' },
-  { name: 'Enrage of the Titans',      qp: 1,  members: true,  difficulty: 'Master' },
   { name: 'While Guthix Sleeps',       qp: 1,  members: true,  difficulty: 'Grandmaster' },
   { name: 'Defender of Varrock',       qp: 1,  members: true,  difficulty: 'Master', series: 'Mahjarrat' },
-  { name: 'Ritual of the Mahjarrat',   qp: 1,  members: true,  difficulty: 'Grandmaster', series: 'Mahjarrat' },
-  { name: 'The World Wakes',           qp: 1,  members: true,  difficulty: 'Grandmaster', series: 'Mahjarrat' },
   { name: 'Twilight\'s Promise',       qp: 1,  members: true,  difficulty: 'Novice' },
   { name: 'Perilous Moons',            qp: 1,  members: true,  difficulty: 'Intermediate', series: 'Kourend & Kebos' },
-  { name: 'The Whispering of the Dark', qp: 1, members: true,  difficulty: 'Master' },
   { name: 'Ethically Acquired Antiquities', qp: 1, members: true, difficulty: 'Intermediate' },
   { name: 'Meat and Greet',            qp: 1,  members: true,  difficulty: 'Novice' },
   { name: 'The Ides of Milk',          qp: 1,  members: true,  difficulty: 'Novice' },
@@ -204,6 +194,8 @@ const QUESTS: Quest[] = [
 const UNIQUE_QUESTS = QUESTS.filter(
   (q, i, arr) => arr.findIndex((x) => x.name === q.name) === i
 ).sort((a, b) => a.name.localeCompare(b.name));
+
+export const QUEST_NAME_LIST = UNIQUE_QUESTS.map((q) => q.name);
 
 const TOTAL_QP = UNIQUE_QUESTS.reduce((sum, q) => sum + q.qp, 0);
 
@@ -662,13 +654,17 @@ export default function QuestsScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const detailRef = useRef<View>(null);
 
-  useEffect(() => {
+  const reloadCompleted = useCallback(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
       if (raw) {
         try { setCompleted(new Set(JSON.parse(raw))); } catch {}
       }
     });
   }, []);
+
+  useEffect(() => {
+    migrateStoredQuestCompletions().then(reloadCompleted);
+  }, [reloadCompleted]);
 
   const toggleComplete = useCallback(async (questName: string) => {
     setCompleted((prev) => {
@@ -758,6 +754,15 @@ export default function QuestsScreen() {
                 total={UNIQUE_QUESTS.length}
                 qpEarned={qpEarned}
                 qpTotal={TOTAL_QP}
+              />
+            </View>
+
+            <View style={styles.section}>
+              <WikiSyncPanel
+                compact
+                questNames={UNIQUE_QUESTS.map((q) => q.name)}
+                syncTargets={['quests']}
+                onSynced={reloadCompleted}
               />
             </View>
 

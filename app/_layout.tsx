@@ -7,6 +7,8 @@ import { Asset } from 'expo-asset';
 import { View, Image, StyleSheet, useWindowDimensions } from 'react-native';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import { theme } from '../constants/theme';
+import { autoSyncWikiSyncForSavedCharacters } from '../constants/wikisync-api';
+import { QUEST_NAME_LIST } from '../constants/quest-names';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -43,6 +45,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsLoaded && assetsLoaded) SplashScreen.hideAsync();
+  }, [fontsLoaded, assetsLoaded]);
+
+  useEffect(() => {
+    if (!fontsLoaded || !assetsLoaded) return;
+    autoSyncWikiSyncForSavedCharacters(QUEST_NAME_LIST).catch(() => {
+      // Silent background sync — manual sync remains available in-app.
+    });
   }, [fontsLoaded, assetsLoaded]);
 
   if (!fontsLoaded || !assetsLoaded) return null;
